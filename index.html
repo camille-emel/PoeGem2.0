@@ -6,6 +6,7 @@
         table {
             border-collapse: collapse;
             width: 100%;
+            margin-bottom: 20px;
         }
         th, td {
             border: 1px solid #ddd;
@@ -23,10 +24,38 @@
             height: 32px;
             vertical-align: middle;
         }
+        .gem-group {
+            border-top: 2px solid #666;
+        }
+        .gem-variant {
+            background-color: #f5f5f5;
+        }
+        .filter-section {
+            margin: 20px 0;
+        }
+        select {
+            padding: 5px;
+            font-size: 16px;
+        }
+        .price-diff {
+            color: green;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
     <h1>PoE Ninja Gems</h1>
+    
+    <div class="filter-section">
+        <label for="gemFilter">Filter gems: </label>
+        <select id="gemFilter" onchange="filterGems()">
+            <option value="all">All Gems</option>
+            <option value="awakened">Awakened Gems Only</option>
+            <option value="exceptional">Exceptional Gems (Empower/Enlighten/Enhance)</option>
+            <option value="normal">Normal Gems Only</option>
+        </select>
+    </div>
+
     <table id="gemsTable">
         <thead>
             <tr>
@@ -41,6 +70,9 @@
     </table>
 
     <script>
+        let allGems = [];
+        const exceptionalGems = ['Empower Support', 'Enlighten Support', 'Enhance Support'];
+
         async function fetchGems() {
             try {
                 const response = await fetch('gemsData.json');
@@ -48,30 +80,154 @@
                     throw new Error(`HTTP error! status: ${response.status}`);
                 }
                 const data = await response.json();
-                console.log('Données chargées:', data);
-                displayGems(data.lines);
+                allGems = data.lines.filter(gem => !gem.corrupted);
+                filterGems();
             } catch (error) {
                 console.error('Error:', error);
                 document.body.innerHTML += `<p style="color: red">Erreur: ${error.message}</p>`;
             }
         }
 
-        function displayGems(gems) {
-            const tbody = document.querySelector('#gemsTable tbody');
-            
-            gems.sort((a, b) => b.chaosValue - a.chaosValue);
-            
+        function filterGems() {
+            const filterValue = document.getElementById('gemFilter').value;
+            let gemsToDisplay = [];
+
+            // Fonction pour filtrer les gemmes selon leur type
+            function filterGemsByType(gem) {
+                // Pour les gemmes Awakened
+                if (gem.name.includes('Awakened')) {
+                    const isLevel1Quality0 = gem.gemLevel === 1 && 
+                                           (gem.gemQuality === 0 || 
+                                            gem.gemQuality === undefined || 
+                                            gem.gemQuality === null);
+                    const isLevel5Quality20 = gem.gemLevel === 5 && 
+                                            gem.gemQuality === 20;
+                    return isLevel1Quality0 || isLevel5Quality20;
+                }
+                
+                // Pour les gemmes exceptionnelles
+                if (exceptionalGems.includes(gem.name)) {
+                    return gem.gemLevel === 1 || gem.gemLevel === 3;
+                }
+                
+                // Pour les gemmes normales
+                const isLevel1Quality0 = gem.gemLevel === 1 && 
+                                       (gem.gemQuality === 0 || 
+                                        gem.gemQuality === undefined || 
+                                        gem.gemQuality === null);
+                const isLevel20Quality20 = gem.gemLevel === 20 && 
+                                         gem.gemQuality === 20;
+                return isLevel1Quality0 || isLevel20Quality20;
+            }
+
+            switch(filterValue) {
+                case 'awakened':
+                    gemsToDisplay = allGems.filter(gem => {
+                        const isAwakened = gem.name.includes('Awakened');
+                        return isAwakened && filterGemsByType(gem);
+                    });
+                    break;
+                case 'exceptional':
+                    gemsToDisplay = allGems.filter(gem => {
+                        const isExceptional = exceptionalGems.includes(gem.name) && 
+                                            !gem.name.includes('Awakened');
+                        return isExceptional && filterGemsByType(gem);
+                    });
+                    break;
+                case 'normal':
+                    gemsToDisplay = allGems.filter(gem => {
+                        const isNormalGem = !gem.name.includes('Awakened') && 
+                                          !exceptionalGems.includes(gem.name);
+                        return isNormalGem && filterGemsByType(gem);
+                    });
+                    break;
+                default:
+                    // Pour "All Gems", appliquer les filtres pour chaque type
+                    gemsToDisplay = allGems.filter(filterGemsByType);
+            }
+
+            const groupedGems = groupGemsByName(gemsToDisplay);
+            displayGroupedGems(groupedGems);
+        }
+
+        function groupGemsByName(gems) {
+            const groups = {};
             gems.forEach(gem => {
-                const row = document.createElement('tr');
-                row.innerHTML = `
-                    <td><img src="${gem.icon}" class="gem-icon" alt="${gem.name}"></td>
-                    <td>${gem.name}</td>
-                    <td>${gem.gemLevel}/${gem.gemQuality || 0}</td>
-                    <td>${Math.round(gem.chaosValue).toLocaleString()}</td>
-                    <td>${gem.divineValue.toFixed(2)}</td>
-                `;
-                tbody.appendChild(row);
+                const baseName = gem.name;
+                if (!groups[baseName]) {
+                    groups[baseName] = [];
+                }
+                groups[baseName].push(gem);
             });
+
+            // Trier chaque groupe par valeur en chaos
+            Object.values(groups).forEach(group => {
+                group.sort((a, b) => b.chaosValue - a.chaosValue);
+            });
+
+            // Calculer la différence de prix pour chaque groupe
+            const groupsWithDiff = Object.entries(groups).map(([name, variants]) => {
+                if (variants.length >= 2) {
+                    const priceDiff = Math.abs(variants[0].chaosValue - variants[1].chaosValue);
+                    return [name, variants, priceDiff];
+                }
+                return [name, variants, 0]; // Pour les groupes avec une seule variante
+            });
+
+            // Trier les groupes par différence de prix
+            return groupsWithDiff.sort((a, b) => b[2] - a[2]);
+        }
+
+        function displayGroupedGems(groupedGems) {
+            const tbody = document.querySelector('#gemsTable tbody');
+            tbody.innerHTML = '';
+
+            groupedGems.forEach(([gemName, variants, priceDiff]) => {
+                if (variants.length >= 2) {
+                    // Première variante (la plus chère)
+                    const firstRow = document.createElement('tr');
+                    firstRow.className = 'gem-group';
+                    firstRow.innerHTML = createGemRow(variants[0]);
+                    tbody.appendChild(firstRow);
+
+                    // Deuxième variante avec la différence de prix
+                    const secondRow = document.createElement('tr');
+                    secondRow.className = 'gem-variant';
+                    secondRow.innerHTML = createGemRow(variants[1]);
+                    
+                    // Ajouter la différence de prix si elle existe
+                    const diffCell = document.createElement('td');
+                    diffCell.style.color = 'green';
+                    diffCell.textContent = `Différence: ${Math.round(priceDiff).toLocaleString()} chaos`;
+                    secondRow.appendChild(diffCell);
+                    
+                    tbody.appendChild(secondRow);
+
+                    // Autres variantes si elles existent
+                    variants.slice(2).forEach(variant => {
+                        const row = document.createElement('tr');
+                        row.className = 'gem-variant';
+                        row.innerHTML = createGemRow(variant);
+                        tbody.appendChild(row);
+                    });
+                } else if (variants.length === 1) {
+                    // Pour les gemmes avec une seule variante
+                    const row = document.createElement('tr');
+                    row.className = 'gem-group';
+                    row.innerHTML = createGemRow(variants[0]);
+                    tbody.appendChild(row);
+                }
+            });
+        }
+
+        function createGemRow(gem) {
+            return `
+                <td><img src="${gem.icon}" class="gem-icon" alt="${gem.name}"></td>
+                <td>${gem.name}</td>
+                <td>${gem.gemLevel}/${gem.gemQuality || 0}</td>
+                <td>${Math.round(gem.chaosValue).toLocaleString()}</td>
+                <td>${gem.divineValue.toFixed(2)}</td>
+            `;
         }
 
         fetchGems();
