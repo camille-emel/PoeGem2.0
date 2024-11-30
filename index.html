@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>PoE Ninja Gems</title>
+    <style>
+        table {
+            border-collapse: collapse;
+            width: 100%;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        .gem-icon {
+            width: 32px;
+            height: 32px;
+            vertical-align: middle;
+        }
+    </style>
+</head>
+<body>
+    <h1>PoE Ninja Gems</h1>
+    <table id="gemsTable">
+        <thead>
+            <tr>
+                <th>Icon</th>
+                <th>Name</th>
+                <th>Level/Quality</th>
+                <th>Chaos Value</th>
+                <th>Divine Value</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+
+    <script>
+        async function fetchGems() {
+            try {
+                const response = await fetch('gemsData.json');
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const data = await response.json();
+                console.log('Données chargées:', data);
+                displayGems(data.lines);
+            } catch (error) {
+                console.error('Error:', error);
+                document.body.innerHTML += `<p style="color: red">Erreur: ${error.message}</p>`;
+            }
+        }
+
+        function displayGems(gems) {
+            const tbody = document.querySelector('#gemsTable tbody');
+            
+            gems.sort((a, b) => b.chaosValue - a.chaosValue);
+            
+            gems.forEach(gem => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td><img src="${gem.icon}" class="gem-icon" alt="${gem.name}"></td>
+                    <td>${gem.name}</td>
+                    <td>${gem.gemLevel}/${gem.gemQuality || 0}</td>
+                    <td>${Math.round(gem.chaosValue).toLocaleString()}</td>
+                    <td>${gem.divineValue.toFixed(2)}</td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        fetchGems();
+    </script>
+</body>
+</html> 
